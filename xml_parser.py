@@ -23,7 +23,7 @@ class Trey(QWidget):
         close_action = QAction(u'Закрыть', self)
         close_action.triggered.connect(self.close_from_menu)
         activate_action = QAction(u'Развернуть', self)
-        activate_action.triggered.connect(self.activate_window)
+        activate_action.triggered.connect(self.show)
         tray_menu = QMenu(u'...')
         tray_menu.addAction(close_action)
         tray_menu.addAction(activate_action)
@@ -40,7 +40,8 @@ class Trey(QWidget):
         self.mainWindows_layout = QFormLayout()
         # добавляем в окно вкладки из конфигурационных файлов
         self.configVariables = {}
-        for variable in self.searchPattern('(.*)=(.*)', self.readfile(u'utility.conf'),
+
+        for variable in self.searchPattern('(.*)=(.*)', self.readfile(u'xml_parser.conf'),
                                            u'параметры'):  # найти в конфигах
             self.configVariables[variable[0]] = None
 
@@ -48,8 +49,9 @@ class Trey(QWidget):
             self.configVariables[key] = QComboBox()
             self.configVariables[key].setMinimumContentsLength(15)
             self.configVariables[key].addItems(
-                self.searchPattern('({0}=)(.*)'.format(key), self.readfile(u'utility.conf'), key, True, 2).split())
+                self.searchPattern('({0}=)(.*)'.format(key), self.readfile(u'xml_parser.conf'), key, True, 2).split())
             self.mainWindows_layout.addRow(key, self.configVariables[key])
+            pass
 
         # Добавляю кнопку для установки параметров в утилите автоподписи
         self.setupConfig = QPushButton(u'Установить параметры в утилите')
@@ -126,159 +128,157 @@ class Trey(QWidget):
         if not self.isHidden():
             self.show()
 
-        for path in [os.path.join(self.configVariables['pathToSignmessage'].currentText(), 'in'),
-                     os.path.join(self.configVariables['pathToPutmessage'].currentText(), 'resources')]:
+        for path in [os.path.join(self.configVariables['pathToSignMessage'].currentText(), 'in'),
+                     os.path.join(self.configVariables['pathToPutMessage'].currentText(), 'resources')]:
             for fileitem in os.scandir(path):
                 os.remove(fileitem.path)
 
         for fileitem in os.scandir(os.path.join(os.curdir, 'out')):
             copyfile(fileitem.path,
-                     os.path.join(self.configVariables['pathToSignmessage'].currentText(), 'in', fileitem.name))
-            subprocess.Popen(os.path.join(self.configVariables['pathToSignmessage'].currentText(),
-                                          'run.sh')).wait()  # .communicate()
+                     os.path.join(self.configVariables['pathToSignMessage'].currentText(), 'in', fileitem.name))
+            #subprocess.Popen(os.path.join(self.configVariables['pathToSignMessage'].currentText(),
+             #                             'run.sh')).wait()  # .communicate()
 
-    for fileitem in os.scandir(os.path.join(self.configVariables['pathToSignmessage'].currentText(), 'out')):
-        copyfile(fileitem.path,
-                 os.path.join(self.configVariables['pathToPutmessage'].currentText(), 'resources',
-                              fileitem.name))
-        subprocess.Popen(
-            os.path.join(self.configVariables['pathToPutmessage'].currentText(), 'run.sh')).wait()  # .communicate()
-
-def readAndPastConfigfile(self, pastconfig=False):
-    path_to_config = os.path.join(self.configVariables['pathToPutmessage'].currentText(), 'conf.properties')
-    configs = self.readfile(path_to_config)
-
-    if pastconfig:
-        for key in self.configVariables:
-            configs = configs.replace(self.searchPattern('{0}=.*'.format(key), configs, key, True, 0),
-                                      '{0}='.format(key) + self.configVariables[key].currentText(), key)
-        self.whriteFile(path_to_config, configs)
-        self.tray_icon.showMessage(u'Значения установлены', u'значения установлены')
+        for fileitem in os.scandir(os.path.join(self.configVariables['pathToSignMessage'].currentText(), 'out')):
+            copyfile(fileitem.path,
+                     os.path.join(self.configVariables['pathToPutMessage'].currentText(), 'resources',
+                                  fileitem.name))
+            #subprocess.Popen(
+             #   os.path.join(self.configVariables['pathToPutMessage'].currentText(), 'run.sh')).wait()  # .communicate()
 
 
-def getTextFromTable(self, row, column):
-    return self.changeTagContent_table.item(row, column).text()
+    def readAndPastConfigfile(self, pastconfig=False):
+        path_to_config = os.path.join(self.configVariables['pathToPutMessage'].currentText(), 'conf.properties')
+        configs = self.readfile(path_to_config)
+
+        if pastconfig:
+            for key in self.configVariables:
+                configs = configs.replace(self.searchPattern('{0}=.*'.format(key), configs, key, True, 0),
+                                          '{0}='.format(key) + self.configVariables[key].currentText(), key)
+            self.whriteFile(path_to_config, configs)
+            self.tray_icon.showMessage(u'Значения установлены', u'значения установлены')
 
 
-def changeTagContant(self):
-    past_text = False
-    past_text_by_symbol = False
-    put_file = False
-    if self.changeTextInTag_checkBox.isChecked():
-        past_text = True
-    if self.changeBySymbol_checkbox.isChecked():
-        past_text_by_symbol = True
-    if self.putChangedXml_checkBox.isChecked():
-        put_file = True
-    list_of_files_for_change = os.listdir(os.path.join(os.curdir, 'in'))
-    tag_or_text = {'tag': 1, 'text': 0}
+    def getTextFromTable(self, row, column):
+        return self.changeTagContent_table.item(row, column).text()
 
-    self.tray_icon.showMessage(u'будут подменены следующие сообщения', ''.join(list_of_files_for_change))
-    # Считываю xml-файл
-    for xml in list_of_files_for_change:
-        xml_text = self.readfile(os.path.join(os.curdir, 'in', xml))
-        # цикл по всем строкам в таблице
-        row_count = self.changeTagContent_table.rowCount()
-        for row in range(0, row_count):
-            # Получаю текст, который будет подставлен в xml
-            if past_text:
-                text_list = [self.getTextFromTable(row, tag_or_text['text'])]
-            else:
-                text_list = self.getTextFromTable(row, tag_or_text['text'])
 
-            # Цикл по всем тэгам из строки с тэгами
-            tags_from_table = str(self.getTextFromTable(row, tag_or_text['tag'])).split()
-            for tag in tags_from_table:
-                # Ищу в xml теги, указанные в таблице и возвращаю текст внути тагов
-                tag_content = self.searchPattern(':{0}.*>(.*)<\/.*:{0}>'.format(tag),
-                                                 self.readfile(os.path.join('./in', xml)), tag)
-                if len(tag_content) > 1:
-                    tag_content, ok = QInputDialog().getItem(self, u'Было найдено более одного тега',
-                                                             u'Было найдено более одного тега\s{0}\sвыберите один\s'.format(
-                                                                 tag),
-                                                             tag_content)
-                    if not ok:
-                        return
+    def changeTagContant(self):
+        past_text = False
+        past_text_by_symbol = False
+        put_file = False
+        if self.changeTextInTag_checkBox.isChecked():
+            past_text = True
+        if self.changeBySymbol_checkbox.isChecked():
+            past_text_by_symbol = True
+        if self.putChangedXml_checkBox.isChecked():
+            put_file = True
+        list_of_files_for_change = os.listdir(os.path.join(os.curdir, 'in'))
+        tag_or_text = {'tag': 1, 'text': 0}
+
+        self.tray_icon.showMessage(u'будут подменены следующие сообщения', ''.join(list_of_files_for_change))
+        # Считываю xml-файл
+        for xml in list_of_files_for_change:
+            xml_text = self.readfile(os.path.join(os.curdir, 'in', xml))
+            # цикл по всем строкам в таблице
+            row_count = self.changeTagContent_table.rowCount()
+            for row in range(0, row_count):
+                # Получаю текст, который будет подставлен в xml
+                if past_text:
+                    text_list = [self.getTextFromTable(row, tag_or_text['text'])]
                 else:
-                    tag_content = str(tag_content)[2:-2]
+                    text_list = self.getTextFromTable(row, tag_or_text['text'])
 
-                current_text = self.searchPattern('(:{0}.*>{1}<\/.*{0}>)'.format(tag, tag_content),
-                                                  self.readfile(os.path.join('./in', xml)), tag, True)
-                for item in text_list:
-                    new_xml = xml_text.replace(current_text,
-                                               current_text.replace(str(tag_content), item))
+                # Цикл по всем тэгам из строки с тэгами
+                tags_from_table = str(self.getTextFromTable(row, tag_or_text['tag'])).split()
+                for tag in tags_from_table:
+                    # Ищу в xml теги, указанные в таблице и возвращаю текст внути тагов
+                    tag_content = self.searchPattern(':{0}.*>(.*)<\/.*:{0}>'.format(tag),
+                                                     self.readfile(os.path.join('./in', xml)), tag)
+                    if len(tag_content) > 1:
+                        tag_content, ok = QInputDialog().getItem(self, u'Было найдено более одного тега',
+                                                                 u'Было найдено более одного тега\s{0}\sвыберите один\s'.format(
+                                                                     tag),
+                                                                 tag_content)
+                        if not ok:
+                            return
+                    else:
+                        tag_content = str(tag_content)[2:-2]
 
-                    if past_text_by_symbol:
-                        if put_file:
-                            self.whriteFile(os.path.join(os.curdir, 'in', xml), new_xml)
-                            self.signAndPutXmlToServer()
+                    current_text = self.searchPattern('(:{0}.*>{1}<\/.*{0}>)'.format(tag, tag_content),
+                                                      self.readfile(os.path.join('./in', xml)), tag, True)
+                    for item in text_list:
+                        new_xml = xml_text.replace(current_text,
+                                                   current_text.replace(str(tag_content), item))
+
+                        if past_text_by_symbol:
+                            if put_file:
+                                self.whriteFile(os.path.join(os.curdir, 'in', xml), new_xml)
+                                self.signAndPutXmlToServer()
+                                if not self.showQuestionMessage():
+                                    return
+
+                        elif past_text:
+                            xml_text = xml_text.replace(current_text,
+                                                        current_text.replace(str(tag_content), item))
+                            # Записываю все в папку
+                            if past_text and not put_file:
+                                self.tray_icon.showMessage(u'запись файла', u'помещаю перезаписанный файл в output')
+                            self.whriteFile(os.path.join(os.curdir, 'out', xml), xml_text)
+                            # Если отмечен флаг - закидывать, то отправляю все, что позаменяла
+                            if put_file and not past_text_by_symbol:
+                                self.signAndPutXmlToServer()
                             if not self.showQuestionMessage():
                                 return
 
-                    elif past_text:
-                        xml_text = xml_text.replace(current_text,
-                                                    current_text.replace(str(tag_content), item))
-                        # Записываю все в папку
-                        if past_text and not put_file:
-                            self.tray_icon.showMessage(u'запись файла', u'помещаю перезаписанный файл в output')
-                        self.whriteFile(os.path.join(os.curdir, 'out', xml), xml_text)
-                        # Если отмечен флаг - закидывать, то отправляю все, что позаменяла
-                        if put_file and not past_text_by_symbol:
-                            self.signAndPutXmlToServer()
-                        if not self.showQuestionMessage():
-                            return
+    def showQuestionMessage(self):
+        if not self.isHidden():
+            self.show()
+            self.raise_()
+        return True if QMessageBox.question(self, 'Message', u'Продолжить подмену текста и отправку файла на сервер?',
+                                            QMessageBox.Yes | QMessageBox.No,
+                                            QMessageBox.No) == QMessageBox.Yes else False
 
 
-def showQuestionMessage(self):
-    if not self.isHidden():
-        self.show()
-        self.raise_()
-    return True if QMessageBox.question(self, 'Message', u'Продолжить подмену текста и отправку файла на сервер?',
-                                        QMessageBox.Yes | QMessageBox.No,
-                                        QMessageBox.No) == QMessageBox.Yes else False
+    def searchPattern(self, pattern, file, serchparametr, search_particular=False, gr=0):
+        self.tray_icon.showMessage('поиск значения', 'поиск значения в файле' + str(file))
+        try:
+            if search_particular:
+                return search(pattern, file).group(gr)
+            else:
+                return findall(pattern, file)
+        except TypeError:
+            self.tray_icon.showMessage('TypeError', u'невозможно найти ' + serchparametr)
+        except AttributeError:
+            self.tray_icon.showMessage('AttributeError', u'невозможно найти ' + serchparametr)
 
 
-def searchPattern(self, pattern, file, serchparametr, search_particular=False, gr=0):
-    self.tray_icon.showMessage('поиск значения', 'поиск значения в файле' + str(file))
-    try:
-        if search_particular:
-            return search(pattern, file).group(gr)
+    @staticmethod
+    def whriteFile(path_to_config, text):
+        with open(path_to_config, 'w') as f:
+            f.write(text)
+
+
+    def readfile(self, path_to_config='xml_parser.conf'):
+        with open(path_to_config, 'r') as f:
+            output = f.read()
+        return output
+
+
+    # Функции для работы с треем
+    def close_from_menu(self):
+        self.close_action_from_menu = True
+        self.close()
+
+    def closeEvent(self, event):
+        if self.close_action_from_menu:
+            event.accept()
         else:
-            return findall(pattern, file)
-    except TypeError:
-        self.tray_icon.showMessage('TypeError', u'невозможно найти ' + serchparametr)
-    except AttributeError:
-        self.tray_icon.showMessage('AttributeError', u'невозможно найти ' + serchparametr)
+            event.ignore()
+            self.hide()
 
-
-@staticmethod
-def whriteFile(path_to_config, text):
-    with open(path_to_config, 'w') as f:
-        f.write(text)
-
-
-def readfile(self, path_to_config='utility.conf'):
-    with open(path_to_config, 'r') as f:
-        output = f.read()
-    return output
-
-
-# Функции для работы с треем
-def close_from_menu(self):
-    self.close_action_from_menu = True
-    self.close()
-
-
-def closeEvent(self, event):
-    if self.close_action_from_menu:
-        event.accept()
-    else:
-        event.ignore()
-        self.hide()
-
-
-def activate_window(self):
-    self.show()
+    def activate_window(self):
+        self.show()
 
 
 def checkFolderExist(directory):
@@ -290,8 +290,8 @@ def prepareToStart():
     checkFolderExist(os.path.join(os.curdir, 'in'))
     checkFolderExist(os.path.join(os.curdir, 'out'))
 
-    if not os.path.exists(os.path.join(os.curdir, 'utility.conf')):
-        Trey.whriteFile(os.path.join(os.curdir, 'utility.conf'), 'pathToSignmessage=\npathToPutmessage=\n')
+    if not os.path.exists(os.path.join(os.curdir, 'xml_parser.conf')):
+        Trey.whriteFile(os.path.join(os.curdir, 'xml_parser.conf'), 'pathToSignMessage=\npathToPutMessage=\n')
 
 
 if __name__ == "__main__":
