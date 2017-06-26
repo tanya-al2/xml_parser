@@ -1,8 +1,7 @@
 # coding: utf-8
 
 from shutil import copyfile
-import os
-import sys
+import os, sys, subprocess
 from PyQt5.QtCore import QFile, QXmlStreamReader
 from PyQt5.QtGui import *
 from PyQt5.QtWidgets import *
@@ -10,7 +9,7 @@ from re import *
 
 
 # окно в котором считываются настройки для указанной в кофигах утилиты
-class SettingTab(QWidget):
+class SettingTab(QWidget. Trey):
     def __init__(self, parent=None):
         QWidget.__init__(self, parent)
         # Добавляем виджеты
@@ -19,7 +18,7 @@ class SettingTab(QWidget):
         # добавляем в окно вкладки из конфигурационных файлов
         self.config_variables = {}
 
-        for variable in Trey.search_pattern('(.*)=(.*)',
+        for variable in self.search_pattern('(.*)=(.*)',
                                             read_file(os.path.join(os.curdir, 'xml_parser.conf')),
                                             u'параметры'):  # найти в конфигах
             self.config_variables[variable[0]] = None
@@ -28,7 +27,7 @@ class SettingTab(QWidget):
             self.config_variables[key] = QComboBox()
             self.config_variables[key].setMinimumContentsLength(15)
             self.config_variables[key].addItems(
-                Trey.search_pattern('({0}=)(.*)'.format(key),
+                self.search_pattern('({0}=)(.*)'.format(key),
                                     read_file(os.path.join(os.curdir, 'xml_parser.conf')), key,
                                     True, 2).split())
             self.main_windows_layout.addRow(key, self.config_variables[key])
@@ -48,14 +47,11 @@ class SettingTab(QWidget):
                 configs = configs.replace(self.searchPattern('{0}=.*'.format(key), configs, key, True, 0),
                                           '{0}='.format(key) + self.config_variables[key].currentText(), key)
             write_file(path_to_config, configs)
-            # self.tray_icon.showMessage(u'Значения установлены', u'значения установлены')
-
 
 class ChangeXmlTab(QWidget):
     def __init__(self, parent=None):
         QWidget.__init__(self, parent)
         # окно с которого все началось
-        # self.checkboxeslayout = QGroupBox()
         # Добавляю чек-боксы к окну
         self.put_check_box = QCheckBox(u'загрузить xml')
         self.tag_check_box = QCheckBox(u'поменять текст')
@@ -109,9 +105,10 @@ class ChangeXmlTab(QWidget):
     def get_text_from_table(self, row, column):
         return self.tag_content_table.item(row, column).text()
 
-    def read_xml_file(self, xml_file, tag):
+    def read_xml_file(self, xml, tag):
 
         try:
+            xml_file = QFile(os.path.join(os.curdir, 'in', xml))
             xml_file.open(xml_file.ReadOnly | xml_file.Text)
             doc = QXmlStreamReader(xml_file)
             text_list = []
@@ -163,10 +160,9 @@ class ChangeXmlTab(QWidget):
         # Считываю xml-файл
         for xml in list_of_files_for_change:
             # цикл по всем строкам в таблице
-            xml_file = QFile(os.path.join(os.curdir, 'in', xml))
             row_count = self.tag_content_table.rowCount()
-            # q_xml_text = self.read_qfile(xml_file)
             for row in range(0, row_count):
+
                 # Получаю текст, который будет подставлен в xml
                 if self.tag_check_box.isChecked():
                     text_to_replace = [self.get_text_from_table(row, tag_or_text['text'])]
@@ -177,7 +173,7 @@ class ChangeXmlTab(QWidget):
                 tags_from_table = str(self.get_text_from_table(row, tag_or_text['tag'])).split()
                 for tag in tags_from_table:
                     # Ищу в xml теги, указанные в таблице и возвращаю текст внути тагов
-                    tag_content = self.read_xml_file(xml_file, tag)
+                    tag_content = self.read_xml_file(xml, tag)
                     if len(tag_content) > 1:
                         tag_content, ok = QInputDialog().getItem(self, u'Было найдено более одного тега',
                                                                  u'Было найдено более одного тега\s{0}\sвыберите один\s'.format(
@@ -191,7 +187,7 @@ class ChangeXmlTab(QWidget):
                     for item in text_to_replace:
                         if self.change_by_symbol_checkbox.isChecked():
                             if self.put_check_box.isChecked():
-                                self.rewrite_qfile(xml_file,
+                                self.rewrite_qfile(xml,
                                                    '{0}</{1}'.format(tag_content_text, tag_content_name),
                                                    '{0}</{1}'.format(item, tag_content_name))
                                 self.sign_and_put_xml_to_server()
@@ -240,11 +236,6 @@ class Trey(QWidget):
         self.tray_icon.setContextMenu(tray_menu)
         self.tray_icon.activated.connect(self.activate_window)
 
-        # Добавляю все в главное окно
-        # Создаю виджет с вкладкой для установки конфигов в утилите автоподписи
-        # self.config_widget = QWidget()
-        # self.config_widget.setLayout(self.mainWindows_layout)
-
         # Создаем виджет с вкладкой для заметы содержания вкладок
         # главное окно
         self.main_tab_layout = QVBoxLayout(self)
@@ -256,8 +247,7 @@ class Trey(QWidget):
         self.main_tab_layout.addWidget(self.main_tab_widget)
         self.setLayout(self.main_tab_layout)
 
-    @staticmethod
-    def search_pattern(pattern, file, search_parameters, search_particular=False, gr=0):
+    def search_pattern(self, pattern, file, search_parameters, search_particular=False, gr=0):
         # HelperManager.tray_icon.showMessage('поиск значения', 'поиск значения в файле' + str(file))
         try:
             if search_particular:
@@ -265,9 +255,9 @@ class Trey(QWidget):
             else:
                 return findall(pattern, file)
         except TypeError:
-            tray_icon.showMessage('TypeError', u'невозможно найти ' + search_parameters)
+            self.tray_icon.showMessage('TypeError', u'невозможно найти ' + search_parameters)
         except AttributeError:
-            tray_icon.showMessage('AttributeError', u'невозможно найти ' + search_parameters)
+            self.tray_icon.showMessage('AttributeError', u'невозможно найти ' + search_parameters)
 
     def setConfigVariables(self):
         self.configVariables.clear()
