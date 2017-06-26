@@ -230,7 +230,6 @@ class Trey(QWidget):
         tray_menu.addAction(close_action)
         tray_menu.addAction(activate_action)
         self.close_action_from_menu = False
-
         self.tray_icon = QSystemTrayIcon(QIcon(u'xml_parser.ico'), self)
         self.tray_icon.show()
         self.tray_icon.setContextMenu(tray_menu)
@@ -240,6 +239,7 @@ class Trey(QWidget):
         # главное окно
         self.main_tab_layout = QVBoxLayout(self)
         self.main_tab_widget = QTabWidget(self)
+
         # добавляем вкладки
         self.main_tab_widget.addTab(ChangeXmlTab(), u'Окно для замены текста в тагах')
         self.main_tab_widget.addTab(SettingTab(), u'Установка настроеек для утилиты автоподписи')
