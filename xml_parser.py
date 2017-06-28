@@ -7,9 +7,71 @@ from PyQt5.QtGui import *
 from PyQt5.QtWidgets import *
 from re import *
 
+class Trey(QWidget):
+    def __init__(self, parent=None):
+        QWidget.__init__(self, parent)
+        self.setWindowTitle(u'Настройки')
+        self.setMinimumWidth(600)
+        self.setMinimumHeight(400)
+
+        # работа с треем
+        close_action = QAction(u'Закрыть', self)
+        close_action.triggered.connect(self.close_from_menu)
+        activate_action = QAction(u'Развернуть', self)
+        activate_action.triggered.connect(self.show)
+        tray_menu = QMenu(u'...')
+        tray_menu.addAction(close_action)
+        tray_menu.addAction(activate_action)
+        self.close_action_from_menu = False
+        self.tray_icon = QSystemTrayIcon(QIcon(u'xml_parser.ico'), self)
+        self.tray_icon.show()
+        self.tray_icon.setContextMenu(tray_menu)
+        self.tray_icon.activated.connect(self.activate_window)
+
+        # Создаем виджет с вкладкой для заметы содержания вкладок
+        # главное окно
+        self.main_tab_layout = QVBoxLayout(self)
+        self.main_tab_widget = QTabWidget(self)
+
+        # добавляем вкладки
+        self.main_tab_widget.addTab(ChangeXmlTab(), u'Окно для замены текста в тагах')
+        self.main_tab_widget.addTab(SettingTab(), u'Установка настроеек для утилиты автоподписи')
+
+        self.main_tab_layout.addWidget(self.main_tab_widget)
+        self.setLayout(self.main_tab_layout)
+
+    def search_pattern(self, pattern, file, search_parameters, search_particular=False, gr=0):
+        # HelperManager.tray_icon.showMessage('поиск значения', 'поиск значения в файле' + str(file))
+        try:
+            if search_particular:
+                return search(pattern, file).group(gr)
+            else:
+                return findall(pattern, file)
+        except TypeError:
+            self.tray_icon.showMessage('TypeError', u'невозможно найти ' + search_parameters)
+        except AttributeError:
+            self.tray_icon.showMessage('AttributeError', u'невозможно найти ' + search_parameters)
+
+    def setConfigVariables(self):
+        self.configVariables.clear()
+
+    # Функции для работы с треем
+    def close_from_menu(self):
+        self.close_action_from_menu = True
+        self.close()
+
+    def closeEvent(self, event):
+        if self.close_action_from_menu:
+            event.accept()
+        else:
+            event.ignore()
+            self.hide()
+
+    def activate_window(self):
+        self.show()
 
 # окно в котором считываются настройки для указанной в кофигах утилиты
-class SettingTab(QWidget. Trey):
+class SettingTab(Trey):
     def __init__(self, parent=None):
         QWidget.__init__(self, parent)
         # Добавляем виджеты
@@ -212,71 +274,6 @@ class ChangeXmlTab(QWidget):
         return True if QMessageBox.question(self, 'Message', u'Продолжить подмену текста и отправку файла на сервер?',
                                             QMessageBox.Yes | QMessageBox.No,
                                             QMessageBox.No) == QMessageBox.Yes else False
-
-
-class Trey(QWidget):
-    def __init__(self, parent=None):
-        QWidget.__init__(self, parent)
-        self.setWindowTitle(u'Настройки')
-        self.setMinimumWidth(600)
-        self.setMinimumHeight(400)
-
-        # работа с треем
-        close_action = QAction(u'Закрыть', self)
-        close_action.triggered.connect(self.close_from_menu)
-        activate_action = QAction(u'Развернуть', self)
-        activate_action.triggered.connect(self.show)
-        tray_menu = QMenu(u'...')
-        tray_menu.addAction(close_action)
-        tray_menu.addAction(activate_action)
-        self.close_action_from_menu = False
-        self.tray_icon = QSystemTrayIcon(QIcon(u'xml_parser.ico'), self)
-        self.tray_icon.show()
-        self.tray_icon.setContextMenu(tray_menu)
-        self.tray_icon.activated.connect(self.activate_window)
-
-        # Создаем виджет с вкладкой для заметы содержания вкладок
-        # главное окно
-        self.main_tab_layout = QVBoxLayout(self)
-        self.main_tab_widget = QTabWidget(self)
-
-        # добавляем вкладки
-        self.main_tab_widget.addTab(ChangeXmlTab(), u'Окно для замены текста в тагах')
-        self.main_tab_widget.addTab(SettingTab(), u'Установка настроеек для утилиты автоподписи')
-
-        self.main_tab_layout.addWidget(self.main_tab_widget)
-        self.setLayout(self.main_tab_layout)
-
-    def search_pattern(self, pattern, file, search_parameters, search_particular=False, gr=0):
-        # HelperManager.tray_icon.showMessage('поиск значения', 'поиск значения в файле' + str(file))
-        try:
-            if search_particular:
-                return search(pattern, file).group(gr)
-            else:
-                return findall(pattern, file)
-        except TypeError:
-            self.tray_icon.showMessage('TypeError', u'невозможно найти ' + search_parameters)
-        except AttributeError:
-            self.tray_icon.showMessage('AttributeError', u'невозможно найти ' + search_parameters)
-
-    def setConfigVariables(self):
-        self.configVariables.clear()
-
-    # Функции для работы с треем
-    def close_from_menu(self):
-        self.close_action_from_menu = True
-        self.close()
-
-    def closeEvent(self, event):
-        if self.close_action_from_menu:
-            event.accept()
-        else:
-            event.ignore()
-            self.hide()
-
-    def activate_window(self):
-        self.show()
-
 
 def check_folder_exist(directory):
     if not os.path.exists(directory):
