@@ -23,11 +23,11 @@ class Trey(QWidget):
         tray_menu.addAction(close_action)
         tray_menu.addAction(activate_action)
         self.close_action_from_menu = False
-        self.tray_icon = QSystemTrayIcon(QIcon(u'xml_parser.ico'), self)
-        self.tray_icon.show()
-        self.tray_icon.setContextMenu(tray_menu)
-        self.tray_icon.activated.connect(self.activate_window)
-
+        tray_icon = QSystemTrayIcon(QIcon(u'xml_parser.ico'), self)
+        tray_icon.show()
+        tray_icon.setContextMenu(tray_menu)
+        tray_icon.activated.connect(self.activate_window)
+        tray_icon.showMessage(u'ошибочка', u'просто говорю, что')
         # Создаем виджет с вкладкой для заметы содержания вкладок
         # главное окно
         self.main_tab_layout = QVBoxLayout(self)
@@ -41,7 +41,6 @@ class Trey(QWidget):
         self.setLayout(self.main_tab_layout)
 
     def search_pattern(self, pattern, file, search_parameters, search_particular=False, gr=0):
-        # HelperManager.tray_icon.showMessage('поиск значения', 'поиск значения в файле' + str(file))
         try:
             if search_particular:
                 return search(pattern, file).group(gr)
@@ -74,36 +73,19 @@ class Trey(QWidget):
 class SettingTab(Trey):
     def __init__(self, parent=None):
         QWidget.__init__(self, parent)
-        # Добавляем виджеты
+        # Добавляю виджеты
         # Сами виджеты
         self.main_windows_layout = QFormLayout()
-        # добавляем в окно вкладки из конфигурационных файлов
-        '''
-                self.config_variables = {}
-
-        for variable in self.search_pattern('(.*)=(.*)',
-                                            read_file(os.path.join(os.curdir, 'xml_parser.conf')),
-                                            u'параметры'):  # найти в конфигах
-            self.config_variables[variable[0]] = None
-
-        for key in self.config_variables:
-            self.config_variables[key] = QComboBox()
-            self.config_variables[key].setMinimumContentsLength(15)
-            self.config_variables[key].addItems(
-                self.search_pattern('({0}=)(.*)'.format(key),
-                                    read_file(os.path.join(os.curdir, 'xml_parser.conf')), key,
-                                    True, 2).split())
-            self.main_windows_layout.insertRow(0, key, self.config_variables[key])
-            '''
-
+        self.tray_icon.showMessage('hy','i love you')
         # Добавляю кнопку для установки параметров в утилите автоподписи
-        self.read_installer()
         self.setup_config = QPushButton(u'Установить параметры в утилите')
         self.main_windows_layout.addRow(self.setup_config)
         self.update_config = QPushButton(u'Установить')
         self.main_windows_layout.addRow(self.update_config)
         self.setup_config.clicked.connect(self.read_and_past_configfile, True)
         self.update_config.clicked.connect(self.updater)
+        # Считываю из конфиг-файла поля и добавляю комбобоксы в окно для установки конфигов другой утилиты
+        self.read_installer()
         self.setLayout(self.main_windows_layout)
 
     def read_installer(self):
@@ -112,23 +94,17 @@ class SettingTab(Trey):
         for variable in self.search_pattern('(.*)=(.*)',
                                             read_file(os.path.join(os.curdir, 'xml_parser.conf')),
                                             u'параметры'):  # найти в конфигах
-            config_variables[variable[0]] = None
-
-        for key in config_variables:
+            key = variable[0]
             config_variables[key] = QComboBox()
             config_variables[key].setMinimumContentsLength(15)
-            config_variables[key].addItems(
-                self.search_pattern('({0}=)(.*)'.format(key),
-                                    read_file(os.path.join(os.curdir, 'xml_parser.conf')), key,
-                                    True, 2).split())
-            self.main_windows_layout.insertRow(0, key, config_variables[key])
-            pass
+            config_variables[key].addItems(variable[1].split())
+            self.main_windows_layout.addRow(key, config_variables[key])
 
     def updater (self):
-        temp = self.main_windows_layout.rowCount()
-        for i in range(self.main_windows_layout.rowCount()-2):
-            self.main_windows_layout.removeRow(0)
+        for i in range(self.main_windows_layout.rowCount(), 2, -1):
+            self.main_windows_layout.removeRow(i)
         self.read_installer()
+        self.update()
 
 #, 'pathToSignMessage', self.config_variables['pathToSignMessage']
     def read_and_past_configfile(self, pastconfig=False):
