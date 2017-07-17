@@ -1,65 +1,214 @@
 # coding: utf-8
 
 from shutil import copyfile
-import os
-import sys
-from PyQt5.QtCore import QFile, QXmlStreamReader
+import os, sys, subprocess
+from PyQt5.QtCore import QFile, QXmlStreamReader, Qt
 from PyQt5.QtGui import *
 from PyQt5.QtWidgets import *
 from re import *
 
 
-# окно в котором считываются настройки для указанной в кофигах утилиты
-class SettingTab(QWidget):
+class Trey(QWidget):
     def __init__(self, parent=None):
         QWidget.__init__(self, parent)
-        # Добавляем виджеты
+        self.setWindowTitle(u'Настройки')
+        self.setMinimumWidth(600)
+        self.setMinimumHeight(400)
+
+        # работа с треем
+        close_action = QAction(u'Закрыть', self)
+        close_action.triggered.connect(self.close_from_menu)
+        activate_action = QAction(u'Развернуть', self)
+        activate_action.triggered.connect(self.show)
+        tray_menu = QMenu(u'...')
+        tray_menu.addAction(close_action)
+        tray_menu.addAction(activate_action)
+        self.close_action_from_menu = False
+        self.tray_icon = QSystemTrayIcon(QIcon(u'xml_parser.ico'), self)
+        self.tray_icon.show()
+        self.tray_icon.setContextMenu(tray_menu)
+        self.tray_icon.activated.connect(self.activate_window)
+
+        # главное окно
+        self.main_tab_layout = QVBoxLayout(self)
+        self.main_tab_widget = QTabWidget(self)
+
+        # добавляю вкладки
+        setting_tab = SettingTab(self)
+        self.main_tab_widget.addTab(ChangeXmlTab(self, setting_tab.config_variables), u'Окно для замены текста в тагах')
+        self.main_tab_widget.addTab(setting_tab, u'Установка настроеек для утилиты автоподписи')
+        self.main_tab_widget.addTab(CopyPastEndExecuteScriptTab(self), u'Окно для копипасты и запуска скриптов')
+
+        self.main_tab_layout.addWidget(self.main_tab_widget)
+        self.setLayout(self.main_tab_layout)
+
+    # Функции для работы с треем
+    def close_from_menu(self):
+        self.close_action_from_menu = True
+        self.close()
+
+    def closeEvent(self, event):
+        if self.close_action_from_menu:
+            event.accept()
+        else:
+            event.ignore()
+            self.hide()
+
+    def activate_window(self):
+        self.show()
+
+    # Общие для всех классов/вкладок функции
+
+    def copy_file_past_file(self, path_to_out_dir, path_to_in_dir):
+        for file_item in os.scandir(path_to_in_dir):
+            os.remove(file_item.path)
+
+        for file_item in os.scandir(path_to_out_dir):
+            copyfile(file_item.path, os.path.join(
+                path_to_in_dir, file_item.name))
+
+    # функция запускает sh/bash/bat и другие файла, а перед этим сворачивает окно
+    def execute_script(self, path_to_exec_file):
+        if not self.isHidden():
+            self.show()
+
+        subprocess.Popen(path_to_exec_file).wait() # .communicate()
+
+    def search_pattern(self, pattern, file, search_parameters, search_particular=False, gr=0):
+        try:
+            if search_particular:
+                trmp = search(pattern, file).group(gr)
+                return search(pattern, file).group(gr)
+            else:
+                return findall(pattern, file)
+        except TypeError:
+            self.tray_icon.showMessage('TypeError', u'невозможно найти ' + search_parameters)
+        except AttributeError:
+            self.tray_icon.showMessage('AttributeError', u'невозможно найти ' + search_parameters)
+
+
+# класс для вкладки, который не несет смысловой нагрузки, через нее можно копировать файлы из папки в папку
+# и запускать скриптовые файлы
+class CopyPastEndExecuteScriptTab(Trey):
+    path_to_config = 'add-on.config'
+    path_to_input_folder = 'pathToInputFolder'
+    path_to_output_folder = 'pathToOutputFolder'
+    path_to_executed_script = 'pathToExecFile'
+
+    def __init__(self, parent):
+        QWidget.__init__(self, parent)
+        self._parent = parent
+        self.input_folder_box = QComboBox()
+        self.input_folder_box.addItems(
+            self._parent.search_pattern('{0}=(.*)'.format(self.path_to_input_folder), read_file(
+                os.path.join(os.curdir, self.path_to_config)), self.path_to_input_folder, True, 1).split())
+        self.output_folder_box = QComboBox()
+        self.output_folder_box.addItems(
+            self._parent.search_pattern('{0}=(.*)'.format(self.path_to_output_folder), read_file(
+                os.path.join(os.curdir, self.path_to_config)), self.path_to_output_folder, True, 1).split())
+        self.execute_script_box = QComboBox()
+        self.execute_script_box.addItems(
+            self._parent.search_pattern('{0}=(.*)'.format(self.path_to_executed_script), read_file(
+                os.path.join(os.curdir, self.path_to_config)), self.path_to_executed_script, True, 1).split())
+
+        self.folders_layoutes = QFormLayout()
+        self.folders_layoutes.addRow(self.path_to_input_folder, self.input_folder_box)
+        self.folders_layoutes.addRow(self.path_to_output_folder, self.output_folder_box)
+        self.execute_script_layoutes = QFormLayout()
+        self.execute_script_layoutes.addRow(self.path_to_executed_script, self.execute_script_box)
+
+        # Создаю кнопки
+        self.copy_past_button = QPushButton(u'копировать и вставить файл')
+        self.execute_script_button = QPushButton(u'выполнить')
+
+        # Привязываю действия
+        self.copy_past_button.clicked.connect(self.copy_file_past_file_on_click)
+        self.execute_script_button.clicked.connect(self.execute_script_on_click)
+
+        self.main_layout = QGridLayout()
+        self.main_layout.addLayout(self.folders_layoutes, 0, 0)
+        self.main_layout.addWidget(self.copy_past_button, 0, 1, Qt.AlignTop)
+        self.main_layout.addLayout(self.execute_script_layoutes, 1, 0, Qt.AlignTop)
+        self.main_layout.addWidget(self.execute_script_button, 1, 1, Qt.AlignTop)
+
+        self.setLayout(self.main_layout)
+
+    def copy_file_past_file_on_click(self):
+        self._parent.copy_file_past_file(self.input_folder_box.currentText(), self.output_folder_box.currentText())
+
+    def execute_script_on_click(self):
+        self._parent.execute_script(self.execute_script_box.currentText())
+
+
+# в классе считываются параметры из xml_parser.conf. Подерживается динамическая установка параметров:считываются как сами параметы, так и ихзначения
+# Обязательными являются только параметры pathToUtility и pathToSignMessage
+class SettingTab(Trey):
+    path_to_config = 'xml_parser.conf'
+    path_to_utiity_config = 'pathToUtilityConfig'
+    config_variables = {}
+
+    def __init__(self, parent):
+        QWidget.__init__(self, parent)
+        # Добавляю виджеты
         # Сами виджеты
-        self.main_windows_layout = QFormLayout()
-        # добавляем в окно вкладки из конфигурационных файлов
-        self.config_variables = {}
-
-        for variable in Trey.search_pattern('(.*)=(.*)',
-                                            read_file(os.path.join(os.curdir, 'xml_parser.conf')),
-                                            u'параметры'):  # найти в конфигах
-            self.config_variables[variable[0]] = None
-
-        for key in self.config_variables:
-            self.config_variables[key] = QComboBox()
-            self.config_variables[key].setMinimumContentsLength(15)
-            self.config_variables[key].addItems(
-                Trey.search_pattern('({0}=)(.*)'.format(key),
-                                    read_file(os.path.join(os.curdir, 'xml_parser.conf')), key,
-                                    True, 2).split())
-            self.main_windows_layout.addRow(key, self.config_variables[key])
+        self._parent = parent
+        self.main_layout = QFormLayout()
 
         # Добавляю кнопку для установки параметров в утилите автоподписи
         self.setup_config = QPushButton(u'Установить параметры в утилите')
-        self.main_windows_layout.addRow(self.setup_config)
+        self.main_layout.addRow(self.setup_config)
+        self.update_config = QPushButton(u'Обновить список параметров')
+        self.main_layout.addRow(self.update_config)
         self.setup_config.clicked.connect(self.read_and_past_configfile, True)
-        self.setLayout(self.main_windows_layout)
+        self.update_config.clicked.connect(self.utility_config_updater)
 
-    def read_and_past_configfile(self, pastconfig=False):
-        path_to_config = os.path.join(self.config_variables['pathToPutMessage'].currentText(), 'conf.properties')
+        # Считываю из конфиг-файла поля и добавляю комбобоксы в окно для установки конфигов другой утилиты
+        self.add_tabs_with_parameters_config_reader()
+        self.setLayout(self.main_layout)
+
+    def add_tabs_with_parameters_config_reader(self):
+        for variable in self._parent.search_pattern('(.*)?=(.*)',
+                                                    read_file(os.path.join(os.curdir, self.path_to_config)),
+                                                    u'параметры'):
+            key = variable[0]
+            self.config_variables[key] = QComboBox()
+            self.config_variables[key].setMinimumContentsLength(15)
+            self.config_variables[key].addItems(variable[1].split())
+            self.main_layout.addRow(key, self.config_variables[key])
+
+    def utility_config_updater(self):
+        for i in range(self.main_layout.rowCount(), 2, -1):
+            self.main_layout.removeRow(i)
+        self.add_tabs_with_parameters_config_reader()
+        self.update()
+
+    def read_and_past_configfile(self):
+        path_to_config = os.path.abspath(self.config_variables[self.path_to_utiity_config].currentText())
         configs = read_file(path_to_config)
-
-        if pastconfig:
-            for key in self.config_variables:
-                configs = configs.replace(self.searchPattern('{0}=.*'.format(key), configs, key, True, 0),
-                                          '{0}='.format(key) + self.config_variables[key].currentText(), key)
-            write_file(path_to_config, configs)
-            # self.tray_icon.showMessage(u'Значения установлены', u'значения установлены')
-
+        for key in self.config_variables:
+            try:
+                configs = configs.replace(self._parent.search_pattern('{0}=.*'.format(key), configs, key, True, 0),
+                                          '{0}={1}'.format(key, self.config_variables[key].currentText()))
+            except AttributeError:
+                self._parent.tray_icon.showMessage('AttributeError', u'невозможно найти ' + key)
+            except TypeError:
+                self._parent.tray_icon.showMessage('AttributeError', u'невозможно найти ' + key)
+        write_file(path_to_config, configs)
 
 class ChangeXmlTab(QWidget):
-    def __init__(self, parent=None):
+    path_to_put_message = 'pathToPutMessageUtility'
+    path_to_sign_message = 'pathToSignMessageUtility'
+    config_variables = None
+
+    def __init__(self, parent, config_variables_s):
         QWidget.__init__(self, parent)
+        self.config_variables = config_variables_s
         # окно с которого все началось
-        # self.checkboxeslayout = QGroupBox()
         # Добавляю чек-боксы к окну
+        self._parent = parent
         self.put_check_box = QCheckBox(u'загрузить xml')
-        self.tag_check_box = QCheckBox(u'поменять текст')
-        self.change_by_symbol_checkbox = QCheckBox(u'добавить по одному символу')
+        self.tag_check_box = QRadioButton(u'поменять текст')
+        self.change_by_symbol_checkbox = QRadioButton(u'добавить по одному символу')
 
         # Создаю main_tab_layout с чекбоксами
         self.check_boxes_box_layout = QVBoxLayout()
@@ -109,9 +258,9 @@ class ChangeXmlTab(QWidget):
     def get_text_from_table(self, row, column):
         return self.tag_content_table.item(row, column).text()
 
-    def read_xml_file(self, xml_file, tag):
-
+    def read_xml_file(self, xml, tag):
         try:
+            xml_file = QFile(os.path.join(os.curdir, 'in', xml))
             xml_file.open(xml_file.ReadOnly | xml_file.Text)
             doc = QXmlStreamReader(xml_file)
             text_list = []
@@ -130,45 +279,19 @@ class ChangeXmlTab(QWidget):
         text = read_file(os.path.join(os.curdir, 'in', xml_file))
         new_text = text.replace(pattern_old, pattern_new)
         write_file(os.path.join(os.curdir, 'out', xml_file), new_text)
-        '''
-        try:
-            new_xml_file = QFile(os.path.join(os.curdir, 'out', '1000000032016042500004208.xml'))
-            xml_file.open(xml_file.ReadOnly | xml_file.Text)
-            new_xml_file.open(xml_file.WriteOnly | xml_file.Text)
-            doc = QTextStream(xml_file)
-            text_list = doc.readAll()
-            text_list_new = text_list.replace(pattern_old, pattern_new)
-            new_doc = QTextStream(new_xml_file)
-            new_doc.write(text_list_new)
-            pass
-        finally:
-            xml_file.close()
-            new_xml_file.close()
-        '''
 
     def sign_and_put_xml_to_server(self):
 
-        if not self.isHidden():
-            self.show()
-
-        for path in [os.path.join(self.configVariables['pathToSignMessage'].currentText(), 'in'),
-                     os.path.join(self.configVariables['pathToPutMessage'].currentText(), 'resources')]:
-            for file_item in os.scandir(path):
-                os.remove(file_item.path)
-
-        for file_item in os.scandir(os.path.join(os.curdir, 'out')):
-            copyfile(file_item.path,
-                     os.path.join(self.configVariables['pathToSignMessage'].currentText(), 'in', file_item.name))
-            subprocess.Popen(os.path.join(self.configVariables['pathToSignMessage'].currentText(),
-                                          'run.sh')).wait()  # .communicate()
-
-        for file_item in os.scandir(os.path.join(self.configVariables['pathToSignMessage'].currentText(), 'out')):
-            copyfile(file_item.path,
-                     os.path.join(self.configVariables['pathToPutMessage'].currentText(), 'resources',
-                                  file_item.name))
-            subprocess.Popen(
-                os.path.join(self.configVariables['pathToPutMessage'].currentText(), 'run.sh')).wait()  # .communicate()
-
+        self._parent.copy_file_past_file(os.path.join(os.curdir, 'out'),
+                                         os.path.join(self.config_variables[self.path_to_sign_message].currentText(),
+                                                      'in'))
+        self._parent.execute_script(os.path.join(self.config_variables[self.path_to_sign_message].currentText(),
+                                                 'run.sh'))
+        self._parent.copy_file_past_file(
+            os.path.join(self.config_variables[self.path_to_sign_message].currentText(), 'out'),
+            os.path.join(self.config_variables[self.path_to_put_message].currentText(),
+                         'resources'))
+        self._parent.execute_script(os.path.join(self.config_variables[self.path_to_put_message].currentText(), 'run.sh'))
 
     def change_tag_contant(self):
         list_of_files_for_change = os.listdir(os.path.join(os.curdir, 'in'))
@@ -178,10 +301,10 @@ class ChangeXmlTab(QWidget):
         # Считываю xml-файл
         for xml in list_of_files_for_change:
             # цикл по всем строкам в таблице
-            xml_file = QFile(os.path.join(os.curdir, 'in', xml))
+            xml_text = read_file(os.path.join(os.curdir, 'in', xml))
             row_count = self.tag_content_table.rowCount()
-            # q_xml_text = self.read_qfile(xml_file)
             for row in range(0, row_count):
+
                 # Получаю текст, который будет подставлен в xml
                 if self.tag_check_box.isChecked():
                     text_to_replace = [self.get_text_from_table(row, tag_or_text['text'])]
@@ -192,7 +315,7 @@ class ChangeXmlTab(QWidget):
                 tags_from_table = str(self.get_text_from_table(row, tag_or_text['tag'])).split()
                 for tag in tags_from_table:
                     # Ищу в xml теги, указанные в таблице и возвращаю текст внути тагов
-                    tag_content = self.read_xml_file(xml_file, tag)
+                    tag_content = self.read_xml_file(xml, tag)
                     if len(tag_content) > 1:
                         tag_content, ok = QInputDialog().getItem(self, u'Было найдено более одного тега',
                                                                  u'Было найдено более одного тега\s{0}\sвыберите один\s'.format(
@@ -200,122 +323,60 @@ class ChangeXmlTab(QWidget):
                                                                  tag_content)
                         if not ok:
                             return
-                    if not tag_content: return
+                    else:
+                        tag_content = str(tag_content)[2:-2]
+                    if not tag_content:
+                        if not self.show_question_message(u'Тэга {0} не существет. Продолжить подмену?'.format(tag)):
+                            return
 
                     tag_content_url, tag_content_name, tag_content_text = tag_content.split(', ')
                     for item in text_to_replace:
                         if self.change_by_symbol_checkbox.isChecked():
                             if self.put_check_box.isChecked():
-                                self.rewrite_qfile(xml_file,
+                                self.rewrite_qfile(xml,
                                                    '{0}</{1}'.format(tag_content_text, tag_content_name),
                                                    '{0}</{1}'.format(item, tag_content_name))
                                 self.sign_and_put_xml_to_server()
-                                if not self.show_question_message():
+                                if not self.show_question_message(u'Продолжить подмену текста и отправку файла на сервер?'):
                                     return
 
                         elif self.tag_check_box.isChecked():
                             # Записываю все в папку
-                            self.rewrite_qfile(xml,
-                                               '{0}</{1}'.format(tag_content_text, tag_content_name),
-                                               '{0}</{1}'.format(item, tag_content_name))
-                            if self.put_check_box.isChecked() and not self.change_by_symbol_checkbox.isChecked():
-                                self.sign_and_put_xml_to_server()
-                            if not self.show_question_message():
-                                return
+                            xml_text = xml_text.replace('{0}</{1}'.format(tag_content_text, tag_content_name),
+                                                '{0}</{1}'.format(item, tag_content_name))
+            if self.tag_check_box.isChecked():
+                write_file(os.path.join(os.curdir, 'out', xml), xml_text)
+                if self.put_check_box.isChecked() and not self.change_by_symbol_checkbox.isChecked():
+                    self.sign_and_put_xml_to_server()
+                if xml != list_of_files_for_change[-1]:
+                    if not self.show_question_message(u'Продолжить подмену текста и отправку файла на сервер?'):
+                        return
 
-
-    def show_question_message(self):
+    def show_question_message(self, message_text):
         if not self.isHidden():
             self.show()
             self.raise_()
-        return True if QMessageBox.question(self, 'Message', u'Продолжить подмену текста и отправку файла на сервер?',
+        return True if QMessageBox.question(self, 'Message', message_text,
                                             QMessageBox.Yes | QMessageBox.No,
                                             QMessageBox.No) == QMessageBox.Yes else False
 
 
-class Trey(QWidget):
-    def __init__(self, parent=None):
-        QWidget.__init__(self, parent)
-        self.setWindowTitle(u'Настройки')
-        self.setMinimumWidth(600)
-        self.setMinimumHeight(400)
-
-        # работа с треем
-        close_action = QAction(u'Закрыть', self)
-        close_action.triggered.connect(self.close_from_menu)
-        activate_action = QAction(u'Развернуть', self)
-        activate_action.triggered.connect(self.show)
-        tray_menu = QMenu(u'...')
-        tray_menu.addAction(close_action)
-        tray_menu.addAction(activate_action)
-        self.close_action_from_menu = False
-
-        self.tray_icon = QSystemTrayIcon(QIcon(u'xml_parser.ico'), self)
-        self.tray_icon.show()
-        self.tray_icon.setContextMenu(tray_menu)
-        self.tray_icon.activated.connect(self.activate_window)
-
-        # Добавляю все в главное окно
-        # Создаю виджет с вкладкой для установки конфигов в утилите автоподписи
-        # self.config_widget = QWidget()
-        # self.config_widget.setLayout(self.mainWindows_layout)
-
-        # Создаем виджет с вкладкой для заметы содержания вкладок
-        # главное окно
-        self.main_tab_layout = QVBoxLayout(self)
-        self.main_tab_widget = QTabWidget(self)
-        # добавляем вкладки
-        self.main_tab_widget.addTab(ChangeXmlTab(), u'Окно для замены текста в тагах')
-        self.main_tab_widget.addTab(SettingTab(), u'Установка настроеек для утилиты автоподписи')
-
-        self.main_tab_layout.addWidget(self.main_tab_widget)
-        self.setLayout(self.main_tab_layout)
-
-    @staticmethod
-    def search_pattern(pattern, file, search_parameters, search_particular=False, gr=0):
-        # HelperManager.tray_icon.showMessage('поиск значения', 'поиск значения в файле' + str(file))
-        try:
-            if search_particular:
-                return search(pattern, file).group(gr)
-            else:
-                return findall(pattern, file)
-        except TypeError:
-            tray_icon.showMessage('TypeError', u'невозможно найти ' + search_parameters)
-        except AttributeError:
-            tray_icon.showMessage('AttributeError', u'невозможно найти ' + search_parameters)
-
-    def setConfigVariables(self):
-        self.configVariables.clear()
-
-    # Функции для работы с треем
-    def close_from_menu(self):
-        self.close_action_from_menu = True
-        self.close()
-
-    def closeEvent(self, event):
-        if self.close_action_from_menu:
-            event.accept()
-        else:
-            event.ignore()
-            self.hide()
-
-    def activate_window(self):
-        self.show()
-
-
-def check_folder_exist(directory):
+def create_folder(directory):
     if not os.path.exists(directory):
         os.makedirs(directory)
 
 
+def create_config_file(file_name, paramentrs):
+    if not os.path.exists(os.path.join(os.curdir, file_name)):
+        write_file(os.path.join(os.curdir, file_name),
+                   paramentrs)
+
+
 def prepar_to_start():
-    check_folder_exist(os.path.join(os.curdir, 'in'))
-    check_folder_exist(os.path.join(os.curdir, 'out'))
-
-    if not os.path.exists(os.path.join(os.curdir, 'xml_parser.conf')):
-        write_file(os.path.join(os.curdir, 'xml_parser.conf'),
-                   'pathToSignMessage=\npathToPutMessage=\n')
-
+    create_folder(os.path.join(os.curdir, 'in'))
+    create_folder(os.path.join(os.curdir, 'out'))
+    create_config_file('xml_parser.conf', 'pathToSignMessageUtility=\npathToPutMessageUtility=\npathToUtilityConfig=\n')
+    create_config_file('add-on.config', 'pathToExecFile=\npathToOutputFolder=\npathToInputFolder=\n')
 
 def write_file(path_to_file, text):
     with open(path_to_file, 'w') as f:
@@ -332,6 +393,4 @@ if __name__ == "__main__":
     prepar_to_start()
     app = QApplication(sys.argv)
     window = Trey()
-    # app.show()
-    # window.read_file('Store','IpStore')
     sys.exit(app.exec_())
